@@ -1,0 +1,35 @@
+{
+    "configurations": [
+        {
+            "name": "Saturn",
+            "includePath": [
+                "${workspaceFolder}/Demo/yaul/libyaul/libyaul/lib/lib",
+                "${workspaceFolder}/Demo/yaul/libyaul/libyaul/.",
+                "${workspaceFolder}/Demo/yaul/libyaul/libyaul/bup",
+                "${workspaceFolder}/Demo/yaul/libyaul/libyaul/common",
+                "${workspaceFolder}/Demo/yaul/libyaul/libyaul/kernel",
+                "${workspaceFolder}/Demo/yaul/libyaul/libyaul/kernel/dbgio",
+                "${workspaceFolder}/Demo/yaul/libyaul/libyaul/math",
+                "${workspaceFolder}/Demo/yaul/libyaul/libyaul/scu",
+                "${workspaceFolder}/Demo/yaul/libyaul/libyaul/scu/bus/a/cs0/arp",
+                "${workspaceFolder}/Demo/yaul/libyaul/libyaul/scu/bus/a/cs0/dram-cart",
+                "${workspaceFolder}/Demo/yaul/libyaul/libyaul/scu/bus/a/cs0/usb-cart",
+                "${workspaceFolder}/Demo/yaul/libyaul/libyaul/scu/bus/a/cs0/flash",
+                "${workspaceFolder}/Demo/yaul/libyaul/libyaul/scu/bus/a/cs2/cd-block",
+                "${workspaceFolder}/Demo/yaul/libyaul/libyaul/scu/bus/a/cs2/cd-block",
+                "${workspaceFolder}/Demo/yaul/libyaul/libyaul/scu/bus/b/scsp",
+                "${workspaceFolder}/Demo/yaul/libyaul/libyaul/scu/bus/b/vdp",
+                "${workspaceFolder}/Demo/yaul/libyaul/libyaul/scu/bus/cpu",
+                "${workspaceFolder}/Demo/yaul/libyaul/libyaul/scu/bus/cpu/smpc"
+            ],
+            "compilerPath": "${workspaceFolder}/Demo/yaul/sh2eb-elf/bin/sh2eb-elf-gcc.exe",
+            "cStandard": "c17",
+            "cppStandard": "c++23",
+            "intelliSenseMode": "linux-gcc-x86",
+            "defines": [
+                "__STDC_HOSTED__=0"
+            ]
+        }
+    ],
+    "version": 4
+}
