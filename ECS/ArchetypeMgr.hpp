@@ -22,7 +22,7 @@ private:
     const size_t dataSize;
     size_t capacity;
     size_t size;
-    size_t offsets[ArchetypeIdST::NonTagComponentCount()] = {};
+    size_t offsets[ArchetypeIdST::ComponentCount()] = {};
     void *entities;
 
     char *EntityAddress(const TypeRow &row) const
@@ -42,8 +42,7 @@ public:
                                            size(0),
                                            entities(nullptr)
     {
-        if (!type.IsEmpty())
-            ((!std::is_empty_v<SupportedTypes> ? offsets[ArchetypeIdST::template ComponentIndex<SupportedTypes>()] = type.template GetOffset<SupportedTypes>() : false), ...);
+        ((offsets[ArchetypeIdST::template ComponentIndex<SupportedTypes>()] = type.template GetOffset<SupportedTypes>()), ...);
     }
 
     TypeRow Add(const size_t &entityId)
@@ -94,10 +93,7 @@ public:
     template <typename Component>
     Component *Get(const TypeRow &row) const
     {
-        if constexpr (std::is_empty_v<Component>)
-            return nullptr;
-        else
-            return (Component *)(EntityComponents(row) + offsets[ArchetypeIdST::template ComponentIndex<Component>()]);
+        return (Component *)(EntityComponents(row) + offsets[ArchetypeIdST::template ComponentIndex<Component>()]);
     }
 
 private:
