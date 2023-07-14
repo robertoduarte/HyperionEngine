@@ -4,7 +4,10 @@
 #include "..\Utils\std\type_traits.h"
 #include "..\Utils\TemplateUtils.hpp"
 
-template <typename... SupportedTypes>
+template <typename T>
+concept ComponentType = (!std::is_empty_v<T>);
+
+template <ComponentType... SupportedTypes>
 class ArchetypeId
 {
 private:
@@ -67,9 +70,9 @@ private:
 
 public:
     // Type Utils
-    static constexpr size_t NonTagComponentCount()
+    static constexpr size_t ComponentCount()
     {
-        return ((!std::is_empty_v<SupportedTypes>)+...);
+        return sizeof...(SupportedTypes);
     }
 
     template <typename Type>
@@ -103,7 +106,6 @@ public:
     // Functions
     constexpr size_t Size() const
     {
-        return ((!std::is_empty_v<SupportedTypes> && Contains<SupportedTypes>() ? sizeof(SupportedTypes) : 0) + ...);
     }
 
     constexpr bool Contains(const ArchetypeId &a) const { return ContainsArchetype(a, CreateIndexSequence<arraySize>{}); }

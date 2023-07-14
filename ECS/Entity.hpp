@@ -46,7 +46,7 @@ public:
     {
         Entity &entity = Create<T...>();
         if (entity.IsValid())
-            ((!std::is_empty_v<T> ? ((*entity.Get<T, false>() = component), true) : true), ...);
+            ((*entity.Get<T, false>() = component), ...);
 
         return entity;
     }
@@ -76,11 +76,9 @@ private:
     template <typename T>
     void CopyComponent(const Entity &srcEntity)
     {
-        if constexpr (!std::is_empty_v<T>)
-        {
-            if (GetType().template Contains<T>() && srcEntity.GetType().template Contains<T>())
-                *(Get<T>()) = *(srcEntity.Get<T>());
-        }
+
+        if (GetType().template Contains<T>() && srcEntity.GetType().template Contains<T>())
+            *(Get<T>()) = *(srcEntity.Get<T>());
     }
 
     void CopyComponents(const Entity &srcEntity)
@@ -107,15 +105,13 @@ private:
     template <typename T>
     void SetComponent(const char *data)
     {
-        if constexpr (!std::is_empty_v<T>)
+
+        if (*data != '\0')
         {
-            if (*data != '\0')
-            {
-                T temp;
-                StringUtils::Parse(temp, data);
-                AddComponent(temp);
-                return;
-            }
+            T temp;
+            StringUtils::Parse(temp, data);
+            AddComponent(temp);
+            return;
         }
         AddComponent<T>();
     }
@@ -209,8 +205,6 @@ private:
     template <class Ret, class T, typename... Components>
     struct ForEachHelper<Ret (T::*)(size_t, Components &...) const>
     {
-        static_assert((!std::is_empty_v<Components> && ...), "Cannot access Tag types in ForEach Lambda.");
-
         constexpr static ArchetypeIdST type = ArchetypeIdST::template BuildArchetypeId<Components...>();
 
         template <typename Lambda>
