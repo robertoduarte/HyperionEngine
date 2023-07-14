@@ -106,6 +106,7 @@ public:
     // Functions
     constexpr size_t Size() const
     {
+        return ((Contains<SupportedTypes>() ? sizeof(SupportedTypes) : 0) + ...);
     }
 
     constexpr bool Contains(const ArchetypeId &a) const { return ContainsArchetype(a, CreateIndexSequence<arraySize>{}); }
