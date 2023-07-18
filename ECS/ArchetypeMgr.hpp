@@ -11,38 +11,26 @@
 using MgrIndex = int16_t;
 using TypeRow = uint16_t;
 
-template <typename... SupportedTypes>
 class ArchetypeMgr
 {
-public:
-    using ArchetypeIdST = ArchetypeId<SupportedTypes...>;
-    const ArchetypeIdST type;
-
 private:
-    const size_t dataSize;
+    size_t dataSize;
     size_t capacity;
     size_t size;
-    size_t offsets[ArchetypeIdST::ComponentCount()] = {};
+    size_t offsets[ArchetypeId::maxComponents] = {};
     void *entities;
 
-    char *EntityAddress(const TypeRow &row) const
-    {
-        return (char *)entities + (dataSize * row);
-    }
-
-    char *EntityComponents(const TypeRow &row) const
-    {
-        return EntityAddress(row) + sizeof(size_t);
-    }
+    char *EntityAddress(const TypeRow &row) const { return (char *)entities + (dataSize * row); }
+    char *EntityComponents(const TypeRow &row) const { return EntityAddress(row) + sizeof(size_t); }
 
 public:
-    ArchetypeMgr(const ArchetypeIdST &a) : type(a),
-                                           dataSize(sizeof(size_t) + type.Size()),
-                                           capacity(0),
-                                           size(0),
-                                           entities(nullptr)
+    const ArchetypeId type;
+    ArchetypeMgr(const ArchetypeId &a) : type(a),
+                                         capacity(0),
+                                         size(0),
+                                         entities(nullptr)
     {
-        ((offsets[ArchetypeIdST::template ComponentIndex<SupportedTypes>()] = type.template GetOffset<SupportedTypes>()), ...);
+        dataSize = type.GetSizeAndSetOffsets(offsets);
     }
 
     TypeRow Add(const size_t &entityId)
@@ -72,10 +60,7 @@ public:
 
     bool Empty() const { return size == 0; }
 
-    size_t GetId(const TypeRow &row) const
-    {
-        return *((size_t *)EntityAddress(row));
-    }
+    size_t GetId(const TypeRow &row) const { return *((size_t *)EntityAddress(row)); }
 
     size_t *RemoveRow(const TypeRow &row)
     {
@@ -90,22 +75,20 @@ public:
         return (size_t *)EntityAddress(row);
     }
 
-    template <typename Component>
-    Component *Get(const TypeRow &row) const
-    {
-        return (Component *)(EntityComponents(row) + offsets[ArchetypeIdST::template ComponentIndex<Component>()]);
-    }
+    template <typename T>
+    T *Get(const TypeRow &row) const { return (T *)(EntityComponents(row) + offsets[Component::Id<T>]); }
+
+    void *Get(const size_t componentId, const TypeRow &row) const { return EntityComponents(row) + offsets[componentId]; }
 
 private:
     static inline Vector<ArchetypeMgr> managers;
-    static inline RBTree<ArchetypeIdST, MgrIndex> managerMap;
+    static inline RBTree<ArchetypeId, MgrIndex> managerMap;
 
 public:
-    static MgrIndex Find(const ArchetypeIdST &a)
+    static MgrIndex Find(const ArchetypeId &a)
     {
         if (MgrIndex *index = managerMap.Search(a))
             return *index;
-
         managers.push_back(ArchetypeMgr(a));
         managerMap.Insert(a, managers.size() - 1);
         return managers.size() - 1;

@@ -7,5 +7,5 @@ IF NOT EXIST yaul/ (
 )
 
 call yaul\scripts\setenv.bat
+make clean
 make
-pause

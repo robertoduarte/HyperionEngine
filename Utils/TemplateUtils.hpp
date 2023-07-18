@@ -1,10 +1,12 @@
 #pragma once
 
+#include "yaul.h"
 #include "std\type_traits.h"
 
-template <size_t...>
+template <size_t... T>
 struct Sequence
 {
+    static constexpr size_t size = (sizeof...(T));
 };
 
 template <size_t N, size_t... Next>
@@ -30,7 +32,7 @@ constexpr bool StrCompare(const char *a, const char *b, Sequence<i...>)
 template <size_t... i>
 constexpr size_t FindLastToken(const char *a, const char token, Sequence<i...> indexes)
 {
-    size_t lastTokenOccurence = indexes.size();
+    size_t lastTokenOccurence = indexes.size;
     ((a[i] == token ? (lastTokenOccurence = i, true) : true) && ...);
     return lastTokenOccurence;
 }
