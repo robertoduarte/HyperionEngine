@@ -1,236 +1,140 @@
 #pragma once
 
-#include "ArchetypeMgr.hpp"
-#include "..\Utils\IdTracker.hpp"
-#include "yaul.h"
+#include <stdint.h>
+#include <stddef.h>
 
-static constexpr size_t EntityCapacity = 512;
+#include <stdlib.h>
+#include "..\Utils\HierarchicalBitset.hpp"
+
+#include "Component.hpp"
+#include "Archetype.hpp"
+
+using Index = uint16_t;
+static constexpr Index InvalidIndex = ~(Index(0));
 
 class Entity
 {
-    // Static Stuff
 private:
-    static Entity invalidEntity;
-    static Entity entities[EntityCapacity];
-    static inline FixedIdTracker<EntityCapacity> idTracker;
+    friend class ArchetypeManager;
+    friend class World;
 
-public:
-    static Entity &Create(const ArchetypeId &archetype = ArchetypeId())
+    struct Record
     {
+        static inline Index capacity = 0;
+        static inline Index last = 0;
+        static inline HierarchicalBitset recycleBin;
+        static inline Record* records = nullptr;
 
-        size_t id;
-        if (idTracker.AssingId(id))
+        static Record& Reserve()
         {
-            Entity &entity = entities[id];
-            entity.managerIndex = ArchetypeMgr::Find(archetype);
-            entity.row = ArchetypeMgr::Access(entity.managerIndex)->Add(id);
-            return entity;
-        }
-
-        return invalidEntity;
-    }
-
-    template <typename... T>
-    static Entity &Create()
-    {
-        return Create(ArchetypeId::BuildArchetypeId<T...>());
-    }
-
-    template <typename... T>
-    static Entity &Create(const T &...component)
-    {
-        Entity &entity = Create<T...>();
-        if (entity.IsValid())
-        {
-            ((*entity.Get<T, false>() = component), ...);
-        }
-
-        return entity;
-    }
-
-    static Entity &GetEntity(const size_t &id)
-    {
-        if (id < EntityCapacity)
-            return entities[id];
-        else
-            return invalidEntity;
-    }
-
-    static void Delete(const size_t &id)
-    {
-        if (id < EntityCapacity)
-        {
-            entities[id].Remove();
-            idTracker.FreeId(id);
-        }
-    }
-
-    // Member Stuff
-private:
-    MgrIndex managerIndex;
-    TypeRow row;
-
-    void CopyComponents(const Entity &srcEntity)
-    {
-        auto thisType = GetType().id;
-        auto otherType = srcEntity.GetType().id;
-        size_t componentId = 0;
-        while (thisType)
-        {
-            if ((thisType & 1) && (otherType & 1))
+            size_t index;
+            if (last < capacity)
             {
-                memcpy(Get(componentId),
-                       srcEntity.Get(componentId),
-                       Component::SizeFromId(componentId));
+                index = last++;
             }
-            componentId++;
-            thisType >>= 1;
-            otherType >>= 1;
+            else if (recycleBin.LookupSetPos(index))
+            {
+                recycleBin.Clear(index);
+            }
+            else
+            {
+                capacity = (capacity == 0) ? 2 : capacity * 2;
+                records = static_cast<Record*>(realloc(records, sizeof(Record) * capacity));
+                index = last++;
+            }
+            return records[index];
         }
-    }
 
-    void Replace(const Entity &srcEntity)
-    {
-        Remove();
-        managerIndex = srcEntity.managerIndex;
-        row = srcEntity.row;
-    }
+        Index archetype = InvalidIndex;
+        Index row = InvalidIndex;
+        Index referenceCounter = 0;
 
-    Entity() : managerIndex(-1), row(0){};
+        Index GetIndex() { return static_cast<Index>(this - records); }
 
-    Entity(const ArchetypeId &a, const Entity &srcEntity)
-    {
-        managerIndex = ArchetypeMgr::Find(a);
-        row = ArchetypeMgr::Access(managerIndex)->Add(srcEntity.GetId());
-        CopyComponents(srcEntity);
-    }
-
-    void Remove()
-    {
-        if (IsValid())
+        void TrySelfDestruct()
         {
-            ArchetypeMgr *manager = ArchetypeMgr::Access(managerIndex);
-            if (size_t *id = manager->RemoveRow(row))
-                entities[*id].row = row;
-        }
-    }
+            if (referenceCounter != 0 || archetype != InvalidIndex)
+            {
+                return;
+            }
 
-    template <bool check = false>
-    void *Get(const size_t componentId) const
-    {
-        if constexpr (check)
-            return IsValid() ? ArchetypeMgr::Access(managerIndex)->Get(componentId, row) : nullptr;
-        else
-            return ArchetypeMgr::Access(managerIndex)->Get(componentId, row);
-    }
-
-public:
-    const ArchetypeId &GetType() const
-    {
-        return ArchetypeMgr::Access(managerIndex)->type;
-    }
-
-    size_t GetId() const
-    {
-        return ArchetypeMgr::Access(managerIndex)->GetId(row);
-    }
-
-    bool IsValid() const
-    {
-        return managerIndex != -1;
-    }
-
-    template <typename T, bool check = false>
-    T *Get() const
-    {
-        if constexpr (check)
-            return IsValid() ? ArchetypeMgr::Access(managerIndex)->Get<T>(row) : nullptr;
-        else
-            return ArchetypeMgr::Access(managerIndex)->Get<T>(row);
-    }
-
-    template <typename T>
-    Entity &AddComponent()
-    {
-        if (IsValid())
-        {
-            ArchetypeId component = ArchetypeId::BuildArchetypeId<T>();
-            ArchetypeId type = GetType();
-            if (!type.Contains(component))
-                Replace(Entity(type + component, *this));
-        }
-        return *this;
-    }
-
-    template <typename... T>
-    Entity &AddComponent(const T &...component)
-    {
-        if (IsValid())
-        {
-            constexpr ArchetypeId components = ArchetypeId::BuildArchetypeId<T...>();
-            ArchetypeId type = GetType();
-            if (!type.template Contains(components))
-                Replace(Entity(type + components, *this));
-
-            ((*Get<T>() = component), ...);
-        }
-        return *this;
-    }
-
-    template <typename... T>
-    Entity &RemoveComponents()
-    {
-        if (IsValid())
-        {
-            const ArchetypeId components = ArchetypeId::BuildArchetypeId<T...>();
-            ArchetypeId type = GetType();
-            if (type.template Contains(components))
-                Replace(Entity(type - components, *this));
-        }
-        return *this;
-    }
-
-private:
-    template <class T>
-    struct ForEachHelper;
-
-    template <class Ret, class T, typename... C>
-    struct ForEachHelper<Ret (T::*)(C &...) const>
-    {
-        static ArchetypeId GetType()
-        {
-            return ArchetypeId::BuildArchetypeId<C...>();
+            Index thisIndex = static_cast<Index>(this - records);
+            if (thisIndex == last - 1)
+            {
+                last--;
+                recycleBin.Clear(thisIndex);
+            }
+            else
+            {
+                recycleBin.Set(thisIndex);
+            }
         }
 
-        template <typename Lambda>
-        static void Execute(ArchetypeMgr *manager, const TypeRow &row, Lambda lambda)
-        {
-            lambda(*manager->Get<C>(row)...);
-        }
+        void Invalidate() { archetype = InvalidIndex; TrySelfDestruct(); }
+        void IncreaseCounter() { referenceCounter++; }
+        void DecreaseCounter() { referenceCounter--; }
     };
 
-public:
+    Index recordIndex = InvalidIndex;
+
     template <typename Lambda>
-    static void ForEach(Lambda lambda)
+    void AccessRecord(Lambda lambda)
     {
-        auto helper = ForEachHelper<decltype(&Lambda::operator())>();
-        auto type = helper.GetType();
-        for (size_t i = 0; i < ArchetypeMgr::Count(); i++)
+        if (recordIndex != InvalidIndex)
         {
-            ArchetypeMgr *manager = ArchetypeMgr::Access(i);
-
-            if (manager->type.Contains(type) && !manager->Empty())
-            {
-                TypeRow row = manager->Size();
-                do
-                {
-                    row--;
-                    helper.Execute(manager, row, lambda);
-                } while (row != 0);
-            }
+            lambda((Record&)Record::records[recordIndex]);
         }
-    };
-};
+    }
 
-inline Entity Entity::invalidEntity;
-inline Entity Entity::entities[EntityCapacity];
+    void Clear()
+    {
+        AccessRecord([](Record& record)
+        {
+            record.DecreaseCounter();
+            record.TrySelfDestruct();
+        });
+    }
+
+    explicit Entity(Index recordIndex) : recordIndex(recordIndex)
+    {
+        AccessRecord([](Record& record) { record.IncreaseCounter(); });
+    }
+
+
+public:
+    Entity() = default;
+
+    ~Entity() { Clear(); }
+
+    Entity(const Entity& other) : recordIndex(other.recordIndex)
+    {
+        AccessRecord([](Record& record) { record.IncreaseCounter(); });
+    }
+
+    Entity& operator=(const Entity& other)
+    {
+        if (this != &other)
+        {
+            Clear();
+            recordIndex = other.recordIndex;
+            AccessRecord([](Record& record) { record.IncreaseCounter(); });
+        }
+        return *this;
+    }
+
+    Entity(Entity&& other) noexcept : recordIndex(other.recordIndex)
+    {
+        other.recordIndex = InvalidIndex;
+    }
+
+    Entity& operator=(Entity&& other) noexcept
+    {
+        if (this != &other)
+        {
+            Clear();
+            recordIndex = other.recordIndex;
+            other.recordIndex = InvalidIndex;
+        }
+        return *this;
+    }
+};

@@ -9,7 +9,7 @@ SH_SRCS:= main.cxx
 
 SH_LIBRARIES:=
 SH_CFLAGS+= -Os -I.
-SH_CXXFLAGS= -O3 -std=c++23 -I. -Wno-error=volatile -Wno-volatile -Wno-register
+SH_CXXFLAGS= -O3 -std=c++23 -I. -Wno-error=volatile -Wno-volatile -Wno-register -Wno-non-template-friend
 
 IP_VERSION:= V1.000
 IP_RELEASE_DATE:= 20160101
