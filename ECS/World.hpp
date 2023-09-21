@@ -1,103 +1,74 @@
 #pragma once
 
-#include "Archetype.hpp"
+#include "EntityReference.hpp"
+#include "..\Utils\TemplateUtils.hpp"
 
-class World
+namespace Hyperion::ECS
 {
-private:
-    template <ComponentType... Components>
-    static ArchetypeManager& GetManager()
+    struct World
     {
-        static const Index index = ArchetypeManager::Find(Component::CreateID<Components...>());
-        return ArchetypeManager::archetypes[index];
-    }
+    private:
+        static inline ArchetypeManager* currentManager = nullptr;
+        static inline Index currentRow = InvalidIndex;
+        
+        template <typename T>
+        static inline T* currentComponentArray;
 
-    template <class T>
-    struct EntityCreationHandler;
-
-    template <class Ret, class T, typename... Components>
-    struct EntityCreationHandler<Ret(T::*)(Components &...) const>
-    {
+    public:
         template <typename Lambda>
-        static Entity Execute(Lambda lambda)
+        static EntityReference CreateEntity(Lambda lambda)
         {
-            ArchetypeManager& archetype = World::GetManager<Components...>();
-            Entity::Record& record = archetype.ReserveRecord();
-            lambda(archetype.GetComponentArray<Components>()[record.row]...);
-            return Entity(record.GetIndex());
-        }
-    };
-
-    template <class T>
-    struct EntityAccessorHandler;
-
-    template <class Ret, class T, typename... Components>
-    struct EntityAccessorHandler<Ret(T::*)(Components *...) const>
-    {
-        template <typename Lambda>
-        static void Execute(ArchetypeManager& archetype, Index row, Lambda lambda)
-        {
-            lambda(archetype.GetComponent<Components>(row) ...);
-        }
-    };
-
-    template <Component::IdType archetypeCacheID>
-    struct ArchetypeLookupCache
-    {
-        static inline Index lastIndexChecked = 0;
-        static inline Index matchCount = 0;
-        static inline Index* matchedIndices = nullptr;
-
-        static void UpdateCache()
-        {
-            while (lastIndexChecked < ArchetypeManager::archetypeCount)
+            using LambdaTraits = LambdaUtil<decltype(&Lambda::operator())>;
+            return LambdaTraits::CallWithTypes([&lambda]<typename ...Ts>()
             {
-                if (Component::Contains(ArchetypeManager::archetypes[lastIndexChecked].id, archetypeCacheID))
+                ArchetypeManager* const manager = ArchetypeManager::Helper<Ts...>::GetInstance();
+                const EntityRecord& record = manager->ReserveRecord();
+                LambdaTraits::ArgInjectTemplateLambda(lambda, [&manager, &record]<typename T>()
                 {
-                    matchedIndices = static_cast<Index*>(realloc(matchedIndices, (matchCount + 1) * sizeof(Index)));
-                    matchedIndices[matchCount++] = lastIndexChecked;
-                }
-                lastIndexChecked++;
-            }
+                    return &(manager->template GetComponentArray<T>()[record.row]);
+                });
+                return EntityReference(record);
+            });
+        }
+
+        template <typename... Ts>
+        static EntityReference CreateEntity()
+        {
+            ArchetypeManager* const manager = ArchetypeManager::Helper<Ts...>::GetInstance();
+            const EntityRecord& record = manager->ReserveRecord();
+            ((new (&manager->GetComponentArray<Ts>()[record.row]) Ts()), ...);
+            return EntityReference(record);
         }
 
         template <typename Lambda>
-        static void ForEachMatch(Lambda lambda)
+        static void ForEachEntity(Lambda lambda)
         {
-            UpdateCache();
-            for (size_t i = 0; i < matchCount; i++)
+            using LambdaTraits = LambdaUtil<decltype(&Lambda::operator())>;
+            LambdaTraits::CallWithTypes([&lambda]<typename ...Ts>()
             {
-                ArchetypeManager::archetypes[i].ForEachRow(lambda);
-            }
+                using LookupCache = ArchetypeManager::LookupCache<Ts...>;
+                LookupCache::Update();
+                for (size_t i = 0; i < LookupCache::matchCount; i++)
+                {
+                    currentManager = &ArchetypeManager::managers[LookupCache::matchedIndices[i]];
+                    ((currentComponentArray<Ts> = currentManager->template GetComponentArray<Ts>()), ...);
+                    for (currentRow = 0; currentRow < currentManager->size; currentRow++)
+                    {
+                        LambdaTraits::ArgInjectTemplateLambda(lambda, []<typename T>()
+                        {
+                            return &(currentComponentArray<T>[currentRow]);
+                        });
+                    }
+                    currentRow = InvalidIndex;
+                }
+            });
+        }
+
+        static EntityReference GetCurrentEntity()
+        {
+            return (currentRow != InvalidIndex) ?
+                EntityReference(EntityRecord::records[currentManager->recordIndices[currentRow]]) :
+                EntityReference();
         }
     };
-
-public:
-    template <typename Lambda>
-    static Entity CreateEntity(Lambda lambda)
-    {
-        return EntityCreationHandler<decltype(&Lambda::operator())>::Execute(lambda);
-    }
-
-    template <ComponentType... Components>
-    static Entity CreateEntity()
-    {
-        ArchetypeManager& archetype = World::GetManager<Components...>();
-        Entity::Record& record = archetype.ReserveRecord();
-        ((new (&archetype.GetComponentArray<Components>()[record.row]) Components()), ...);
-        return Entity(record.GetIndex());
-    }
-
-    template <typename Lambda>
-    static bool AccessEntity(Entity& entity, Lambda lambda)
-    {
-        bool status = false;
-        entity.AccessRecord([lambda, &status](Entity::Record& record)
-        {
-            ArchetypeManager& archetype = ArchetypeManager::archetypes[record.archetype];
-            EntityAccessorHandler<decltype(&Lambda::operator())>::Execute(archetype, record.row, lambda);
-            status = true;
-        });
-        return status;
-    }
-};
+}

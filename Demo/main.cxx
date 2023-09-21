@@ -2,16 +2,6 @@
 #include "yaul.h"
 #include "..\ECS\World.hpp"
 
-struct Position
-{
-    int x, y;
-};
-
-struct Velocity
-{
-    int x, y, z;
-};
-
 static inline const auto init = []()
 {
     dbgio_init();
@@ -28,33 +18,48 @@ static inline const auto init = []()
     return true;
 }();
 
+struct Position
+{
+    int x, y;
+};
+
+struct Velocity
+{
+    int x, y, z;
+};
+
 void main()
 {
-    Entity entity = World::CreateEntity([](Velocity& v)
+    using namespace Hyperion::ECS;
+
+    EntityReference entityA = World::CreateEntity<Position, Velocity>();
+
+    EntityReference entityB = entityA;
+
+    World::CreateEntity<Velocity, Position>();
+    World::CreateEntity([](Position* p)
     {
-        v.x = 1;
-        v.y = 2;
-        v.z = 3;
-        dbgio_printf("Address:%x x:%d y:%d z:%d.\n", &v, v.x, v.y, v.z);
+        p->x = 1;
+        p->y = 2;
     });
 
-    World::CreateEntity<Position, Velocity>();
-    dbgio_printf("Empty Created!\n");
-
-    World::AccessEntity(entity, [](Velocity* v, Position* p)
+    EntityReference entityC = World::CreateEntity([](Velocity* v)
     {
-        dbgio_printf("Position Address:%x", p);
-        dbgio_printf("Velocity Address:%x x:%d y:%d z:%d.\n", v, v->x, v->y, v->z);
+        v->x = 1;
+        v->y = 2;
+        v->z = 3;
     });
+
+    entityB.Destroy();
 
     while (1)
     {
-        // Entity::ForEach([](Position& p)
-        // {
-        //     p.x += 2;
-        //     p.y += 2;
-        //     dbgio_printf("Position x:%d y:%d\n", p.x, p.y);
-        // });
+        World::ForEachEntity([](Position* p)
+        {
+            p->x += 2;
+            p->y += 2;
+            dbgio_printf("Position x:%d y:%d\n", p->x, p->y);
+        });
 
         dbgio_flush();
         vdp2_sync();
