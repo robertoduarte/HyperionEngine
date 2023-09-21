@@ -6,174 +6,237 @@
 #include "..\Utils\SatAlloc.hpp"
 #include "..\Utils\TemplateUtils.hpp"
 
-#include "Component.hpp"
-#include "Entity.hpp"
+#include "EntityRecord.hpp"
 
-struct ArchetypeManager
+namespace Hyperion::ECS
 {
-    friend class Entity;
-    friend class World;
+    template <typename T>
+    concept ComponentType = std::is_trivial_v<T> && (!std::is_empty_v<T>);
 
-    static inline ArchetypeManager* archetypes = nullptr;
-    static inline Index archetypeCount = 0;
-
-    static Index Find(Component::IdType id)
+    class ArchetypeManager
     {
-        for (size_t i = 0; i < archetypeCount; ++i)
+        friend class EntityReference;
+        friend class World;
+
+        using BinaryType = size_t;
+
+        static inline constexpr size_t maxComponents = sizeof(BinaryType) * CHAR_BIT;
+        static inline size_t componentSizes[maxComponents] = { 0 };
+
+        template <ComponentType T>
+            requires(TypeInfo::ID<T> < maxComponents)
+        static inline const BinaryType ComponentBinaryID = []()
         {
-            if (archetypes[i].id == id)
+            componentSizes[TypeInfo::ID<T>] = sizeof(T);
+            return (BinaryType)1 << TypeInfo::ID<T>;
+        }();
+
+        static inline ArchetypeManager* managers = nullptr;
+        static inline size_t managerCount = 0;
+
+        static size_t Find(BinaryType id)
+        {
+            for (size_t i = 0; i < managerCount; ++i)
             {
-                return i;
+                if (managers[i].id == id)
+                {
+                    return i;
+                }
+            }
+
+            managers = static_cast<ArchetypeManager*>(realloc(managers, (managerCount + 1) * sizeof(ArchetypeManager)));
+            new (&managers[managerCount]) ArchetypeManager(id);
+            return managerCount++;
+        }
+
+        template <typename... T>
+        struct HelperImplementation
+        {
+            static inline const BinaryType id = ((ComponentBinaryID<T>) | ...);
+
+            static auto GetInstance()
+            {
+                static const size_t index = ArchetypeManager::Find(id);
+                return &ArchetypeManager::managers[index];
+            }
+
+            static BinaryType AddTo(BinaryType sourceID)
+            {
+                return sourceID | id;
+            }
+
+            static BinaryType RemoveFrom(BinaryType sourceID)
+            {
+                return sourceID & ~id;
+            }
+        };
+
+        template <class... Ts>
+        using Helper = instantiate_t<HelperImplementation, sorted_list_t<list<Ts...>>>;
+
+        template <typename... T>
+        struct LookupCacheImplementation
+        {
+            static inline Index lastIndexChecked = 0;
+            static inline Index matchCount = 0;
+            static inline Index* matchedIndices = nullptr;
+
+            static void Update()
+            {
+                while (lastIndexChecked < ArchetypeManager::managerCount)
+                {
+                    if (ArchetypeManager::managers[lastIndexChecked].Contains(Helper<T...>::id))
+                    {
+                        matchedIndices = static_cast<Index*>(realloc(matchedIndices, (matchCount + 1) * sizeof(Index)));
+                        matchedIndices[matchCount] = lastIndexChecked;
+                        matchCount++;
+                    }
+                    lastIndexChecked++;
+                }
+            }
+        };
+
+        template <class... Ts>
+        using LookupCache = instantiate_t<LookupCacheImplementation, sorted_list_t<list<Ts...>>>;
+
+        Index GetIndex() { return static_cast<Index>(this - managers); }
+
+        BinaryType id;
+
+        using InternalIndex = uint8_t;
+        static inline constexpr InternalIndex Unused = ~(InternalIndex(0));
+
+        Index* recordIndices = nullptr;
+        void** componentArrays = nullptr;
+        InternalIndex internalIndex[maxComponents] = { Unused };
+        Index capacity = 0;
+        Index size = 0;
+
+        template <typename Lambda>
+        static void EachComponent(BinaryType id, Lambda lambda)
+        {
+            size_t componentId = 0;
+            do
+            {
+                if (1 & id)
+                {
+                    lambda(componentId);
+                }
+                componentId++;
+            } while (id >>= 1);
+        }
+
+        template <typename Lambda>
+        static void EachCommonComponent(BinaryType idA, BinaryType idB, Lambda lambda)
+        {
+            size_t componentId = 0;
+            do
+            {
+                if (1 & idA & idB)
+                {
+                    lambda(componentId);
+                }
+                componentId++;
+            } while ((idA >>= 1) && (idB >>= 1));
+        }
+
+        bool Contains(BinaryType expected) { return (id & expected) == expected; }
+
+        char* GetComponentArray(size_t componentId) const
+        {
+            return static_cast<char*>(componentArrays[internalIndex[componentId]]);
+        }
+
+        template <typename T>
+        T* GetComponentArray() const
+        {
+            return static_cast<T*>(componentArrays[internalIndex[TypeInfo::ID<T>]]);
+        }
+
+        template <typename T>
+        T* GetComponent(Index row) const
+        {
+            auto index = internalIndex[TypeInfo::ID<T>];
+            return (index == Unused) ? nullptr :
+                &((static_cast<T*>(componentArrays[index]))[row]);
+        }
+
+        ArchetypeManager(BinaryType id) : id(id)
+        {
+            uint8_t localComponentCount = 0;
+            EachComponent(id, [this, &localComponentCount](size_t componentId)
+            {
+                internalIndex[componentId] = localComponentCount++;
+            });
+            componentArrays = static_cast<void**>(malloc(sizeof(void*) * localComponentCount));
+            for (size_t i = 0; i < localComponentCount; i++)
+            {
+                componentArrays[i] = nullptr;
             }
         }
 
-        archetypes = static_cast<ArchetypeManager*>(realloc(archetypes, (archetypeCount + 1) * sizeof(ArchetypeManager)));
-        new (&archetypes[archetypeCount]) ArchetypeManager(id);
-        return archetypeCount++;
-    }
-
-    Index GetIndex() { return static_cast<Index>(this - archetypes); }
-
-    Component::IdType id;
-
-    using InternalIndex = uint8_t;
-    static inline constexpr InternalIndex Unused = ~(InternalIndex(0));
-
-    Index* recordIndices = nullptr;
-    void** componentArrays = nullptr;
-    InternalIndex internalIndex[Component::MaxComponents] = { Unused };
-    Index capacity = 0;
-    Index size = 0;
-
-    char* GetComponentArray(size_t componentId) const
-    {
-        return static_cast<char*>(componentArrays[internalIndex[componentId]]);
-    }
-
-    template <ComponentType T>
-    T* GetComponentArray() const
-    {
-        return static_cast<T*>(componentArrays[internalIndex[Component::ID<T>]]);
-    }
-
-    template <ComponentType T>
-    T* GetComponent(Index row) const
-    {
-        auto index = internalIndex[Component::ID<T>];
-        return (index == Unused) ? nullptr :
-            &((static_cast<T*>(componentArrays[index]))[row]);
-    }
-
-    ArchetypeManager(Component::IdType id) : id(id)
-    {
-        uint8_t localComponentIndex = 0;
-        Component::EachID(id, [this, &localComponentIndex](size_t componentId)
+        EntityRecord& ReserveRecord()
         {
-            internalIndex[componentId] = localComponentIndex++;
-        });
-        componentArrays = static_cast<void**>(malloc(sizeof(void*) * localComponentIndex));
-        for (size_t i = 0; i < localComponentIndex; i++)
-        {
-            componentArrays[i] = nullptr;
+            EntityRecord& entityRecord = EntityRecord::Reserve();
+
+            if (size >= capacity)
+            {
+                capacity = (capacity == 0) ? 2 : (capacity * 2) - (capacity / 2);
+                recordIndices = static_cast<Index*>(realloc(recordIndices, sizeof(Index) * capacity));
+
+                EachComponent(id, [this](size_t componentId)
+                {
+                    const uint8_t componentArrayIndex = internalIndex[componentId];
+                    componentArrays[componentArrayIndex] =
+                        realloc(componentArrays[componentArrayIndex], componentSizes[componentId] * capacity);
+                });
+            }
+
+            recordIndices[size] = entityRecord.GetIndex();
+
+            entityRecord.archetype = static_cast<Index>(GetIndex());
+            entityRecord.row = size++;
+
+            return entityRecord;
         }
 
-    }
-
-    Entity::Record& ReserveRecord()
-    {
-        Entity::Record& entityRecord = Entity::Record::Reserve();
-
-        if (size >= capacity)
+        void RemoveRow(Index row)
         {
-            capacity = (capacity == 0) ? 2 : capacity * 2;
-            recordIndices = static_cast<Index*>(realloc(recordIndices, sizeof(Index) * capacity));
-
-            Component::EachIdAndSize(id, [this](size_t componentId, size_t componentSize)
+            if (size) size--;
+            Index lastRow = size;
+            if (row != lastRow)
             {
-                uint8_t componentArrayIndex = internalIndex[componentId];
-                componentArrays[componentArrayIndex] =
-                    realloc(componentArrays[componentArrayIndex], componentSize * capacity);
-            });
+                EachComponent(id, [this, row, lastRow](size_t componentId)
+                {
+                    char* componentArray = static_cast<char*>(GetComponentArray(componentId));
+                    const size_t componentSize = componentSizes[componentId];
+                    memcpy(
+                        componentArray + (componentSize * row),
+                        componentArray + (componentSize * lastRow),
+                        componentSize
+                    );
+                });
+
+                EntityRecord::records[recordIndices[row]].Release();
+                EntityRecord::records[recordIndices[lastRow]].row = row;
+                recordIndices[row] = recordIndices[lastRow];
+            }
         }
 
-        recordIndices[size] = entityRecord.GetIndex();
-
-        entityRecord.archetype = static_cast<Index>(GetIndex());
-        entityRecord.row = size++;
-        entityRecord.referenceCounter = 0;
-
-        return entityRecord;
-    }
-
-    void RemoveRow(Index row)
-    {
-        Index lastRow = size ? size - 1 : 0;
-        if (row != lastRow)
+        EntityRecord& MoveEntity(ArchetypeManager* sourceArchetype, size_t sourceRow)
         {
-
-            Component::EachIdAndSize(id, [this, row, lastRow](size_t componentId, size_t componentSize)
+            EntityRecord& record = ReserveRecord();
+            EachCommonComponent(id, sourceArchetype->id, [this, &record, sourceArchetype, sourceRow](size_t componentId)
             {
-                char* componentArray = static_cast<char*>(GetComponentArray(componentId));
+                const size_t componentSize = componentSizes[componentId];
                 memcpy(
-                    componentArray + (componentSize * row),
-                    componentArray + (componentSize * lastRow),
+                    GetComponentArray(componentId) + (componentSize * record.row),
+                    sourceArchetype->GetComponentArray(componentId) + (componentSize * sourceRow),
                     componentSize
                 );
             });
-
-            Entity::Record::records[recordIndices[row]].Invalidate();
-            Entity::Record::records[recordIndices[lastRow]].row = row;
-            recordIndices[row] = recordIndices[lastRow];
-        }
-        if (size) size--;
-    }
-
-    Entity::Record& MoveEntity(ArchetypeManager* sourceArchetype, size_t sourceRow)
-    {
-        Entity::Record& record = ReserveRecord();
-
-        Component::EachCommonIdAndSize(id, sourceArchetype->id, [this, &record, sourceArchetype, sourceRow](size_t componentId, size_t componentSize)
-        {
-            memcpy(
-                GetComponentArray(componentId) + (componentSize * record.row),
-                sourceArchetype->GetComponentArray(componentId) + (componentSize * sourceRow),
-                componentSize
-            );
-        });
-        sourceArchetype->RemoveRow(sourceRow);
-        return record;
-    }
-
-    template <ComponentType T>
-    static inline T* arrayAccessor;
-
-    template <ComponentType T>
-    void CacheAccessor() const
-    {
-        arrayAccessor<T> = static_cast<T*>(componentArrays[internalIndex[Component::ID<T>]]);
-    }
-
-    template <class T>
-    struct ForEachRowHandler;
-
-    template <class Ret, class L, typename... Components>
-    struct ForEachRowHandler<Ret(L::*)(Components&...)>
-    {
-        template <typename Lambda>
-        static void Execute(ArchetypeManager* archetype, Lambda lambda)
-        {
-            ((archetype->CacheAccessor<Components>()), ...);
-
-            for (size_t row = 0; row < archetype->size; row++)
-            {
-                lambda(ArchetypeManager::arrayAccessor<Components>[row]...);
-            }
+            sourceArchetype->RemoveRow(sourceRow);
+            return record;
         }
     };
-
-    template <typename Lambda>
-    void ForEachRow(Lambda lambda)
-    {
-        ForEachRowHandler<decltype(&Lambda::operator())>::Execute(this, lambda);
-    }
-};
+}
