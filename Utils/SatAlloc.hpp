@@ -1,6 +1,6 @@
 #pragma once
 
-#include <scu/bus/a/cs0/dram-cart/dram-cart.h>
+#include <dram-cart.h>
 #include <mm/tlsf.h>
 #include <stdlib.h>
 
@@ -138,12 +138,17 @@ inline void* operator new(size_t size, bool, bool)
 
 #define cart_new new (true, true)
 
-inline void operator delete(void* ptr, unsigned int size)
+inline void operator delete(void* ptr)
 {
     return auto_detect_free(ptr);
 }
 
-void* operator new(size_t size, void* ptr)
+inline void operator delete(void* ptr, unsigned int)
+{
+    return auto_detect_free(ptr);
+}
+
+void* operator new(size_t, void* ptr)
 {
     return ptr;
 }
