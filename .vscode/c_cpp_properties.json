@@ -20,7 +20,8 @@
                 "${workspaceFolder}/Demo/yaul/libyaul/libyaul/scu/bus/b/scsp",
                 "${workspaceFolder}/Demo/yaul/libyaul/libyaul/scu/bus/b/vdp",
                 "${workspaceFolder}/Demo/yaul/libyaul/libyaul/scu/bus/cpu",
-                "${workspaceFolder}/Demo/yaul/libyaul/libyaul/scu/bus/cpu/smpc"
+                "${workspaceFolder}/Demo/yaul/libyaul/libyaul/scu/bus/cpu/smpc",
+                "${workspaceFolder}/Demo/yaul/sh2eb-elf/sh2eb-elf/include/yaul"
             ],
             "compilerPath": "${workspaceFolder}/Demo/yaul/sh2eb-elf/bin/sh2eb-elf-gcc.exe",
             "cStandard": "c17",
