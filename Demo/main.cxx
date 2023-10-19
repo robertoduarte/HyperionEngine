@@ -43,7 +43,7 @@ void main()
         p->y = 2;
     });
 
-    EntityReference entityC = World::CreateEntity([](Velocity* v)
+    World::CreateEntity([](Velocity* v)
     {
         v->x = 1;
         v->y = 2;

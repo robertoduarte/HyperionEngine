@@ -74,12 +74,14 @@ struct PowerOf<A, 0>
 
 class TypeInfo
 {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnon-template-friend"
     template <size_t N>
     struct reader
     {
         friend auto counted_flag(reader<N>);
     };
-
+#pragma GCC diagnostic pop
     template <size_t N>
     struct setter
     {

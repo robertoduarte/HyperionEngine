@@ -161,10 +161,10 @@ namespace Hyperion::ECS
                 &((static_cast<T*>(componentArrays[index]))[row]);
         }
 
-        ArchetypeManager(BinaryType id) : id(id)
+        ArchetypeManager(BinaryType newId) : id(newId)
         {
             uint8_t localComponentCount = 0;
-            EachComponent(id, [this, &localComponentCount](size_t componentId)
+            EachComponent(newId, [this, &localComponentCount](size_t componentId)
             {
                 internalIndex[componentId] = localComponentCount++;
             });
