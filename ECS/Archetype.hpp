@@ -267,7 +267,7 @@ namespace Hyperion::ECS
             if (size >= capacity)
             {
                 capacity = (capacity == 0) ? 2 : (capacity * 2) - (capacity / 2);
-                recordIndices = static_cast<Index*>(realloc(recordIndices, sizeof(Index) * capacity);
+                recordIndices = static_cast<Index*>(realloc(recordIndices, sizeof(Index) * capacity));
 
                 EachComponent(id, [this](size_t componentId)
                 {

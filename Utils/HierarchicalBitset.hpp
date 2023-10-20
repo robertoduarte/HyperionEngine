@@ -223,7 +223,7 @@ public:
 
     HierarchicalBitset() {}
 
-    HierarchicalBitset(size_t capacity) { Resize(capacity); }
+    HierarchicalBitset(size_t newCapacity) { Resize(newCapacity); }
 
     ~HierarchicalBitset()
     {
