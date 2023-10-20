@@ -11,6 +11,9 @@ namespace Hyperion::ECS
     using Index = uint16_t;
     static constexpr Index InvalidIndex = ~(Index(0));
 
+    /**
+     * @brief Represents a record for an entity in the ECS (Entity-Component-System).
+     */
     class EntityRecord
     {
         friend class EntityReference;
@@ -22,6 +25,10 @@ namespace Hyperion::ECS
         static inline HierarchicalBitset recycleBin;
         static inline EntityRecord* records = nullptr;
 
+        /**
+         * @brief Reserves an entity record, creating a new one or reusing an existing one.
+         * @return The reserved EntityRecord.
+         */
         static EntityRecord& Reserve()
         {
             size_t index;
@@ -52,8 +59,15 @@ namespace Hyperion::ECS
         Index row = InvalidIndex;
         Index version = 0;
 
-        Index GetIndex()const { return static_cast<Index>(this - records); }
+        /**
+         * @brief Get the index of the EntityRecord.
+         * @return The index of the EntityRecord.
+         */
+        Index GetIndex() const { return static_cast<Index>(this - records); }
 
+        /**
+         * @brief Releases the entity record, making it available for reuse.
+         */
         void Release()
         {
             archetype = InvalidIndex;

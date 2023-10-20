@@ -5,16 +5,25 @@
 
 namespace Hyperion::ECS
 {
+    /**
+     * @brief Represents the main world of the ECS (Entity-Component-System).
+     */
     struct World
     {
     private:
         static inline ArchetypeManager* currentManager = nullptr;
         static inline Index currentRow = InvalidIndex;
-        
+
         template <typename T>
         static inline T* currentComponentArray;
 
     public:
+        /**
+         * @brief Create a new entity with components using a lambda function.
+         * @tparam Lambda The lambda function to initialize entity components.
+         * @param lambda The lambda function to initialize the components.
+         * @return An EntityReference to the created entity.
+         */
         template <typename Lambda>
         static EntityReference CreateEntity(Lambda lambda)
         {
@@ -31,6 +40,11 @@ namespace Hyperion::ECS
             });
         }
 
+        /**
+         * @brief Create a new entity with specific component types.
+         * @tparam Ts The component types to include in the entity.
+         * @return An EntityReference to the created entity.
+         */
         template <typename... Ts>
         static EntityReference CreateEntity()
         {
@@ -40,6 +54,11 @@ namespace Hyperion::ECS
             return EntityReference(record);
         }
 
+        /**
+         * @brief Iterate over all entities with a set of component types and execute a lambda function.
+         * @tparam Lambda The lambda function to execute for each entity.
+         * @param lambda The lambda function to execute for each entity, providing access to entity components.
+         */
         template <typename Lambda>
         static void ForEachEntity(Lambda lambda)
         {
@@ -64,6 +83,10 @@ namespace Hyperion::ECS
             });
         }
 
+        /**
+         * @brief Get a reference to the currently processed entity.
+         * @return An EntityReference to the current entity, if available, or an empty one.
+         */
         static EntityReference GetCurrentEntity()
         {
             return (currentRow != InvalidIndex) ?
