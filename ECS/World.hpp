@@ -10,14 +10,6 @@ namespace Hyperion::ECS
      */
     struct World
     {
-    private:
-        static inline ArchetypeManager* currentManager = nullptr;
-        static inline Index currentRow = InvalidIndex;
-
-        template <typename T>
-        static inline T* currentComponentArray;
-
-    public:
         /**
          * @brief Create a new entity with components using a lambda function.
          * @tparam Lambda The lambda function to initialize entity components.
@@ -55,43 +47,57 @@ namespace Hyperion::ECS
         }
 
         /**
-         * @brief Iterate over all entities with a set of component types and execute a lambda function.
-         * @tparam Lambda The lambda function to execute for each entity.
-         * @param lambda The lambda function to execute for each entity, providing access to entity components.
+         * @brief Represents an iterator for entities in the ECS world.
          */
-        template <typename Lambda>
-        static void ForEachEntity(Lambda lambda)
+        class EntityIterator
         {
-            using LambdaTraits = LambdaUtil<decltype(&Lambda::operator())>;
-            LambdaTraits::CallWithTypes([&lambda]<typename ...Ts>()
-            {
-                using LookupCache = ArchetypeManager::LookupCache<Ts...>;
-                LookupCache::Update();
-                for (size_t i = 0; i < LookupCache::matchCount; i++)
-                {
-                    currentManager = &ArchetypeManager::managers[LookupCache::matchedIndices[i]];
-                    ((currentComponentArray<Ts> = currentManager->template GetComponentArray<Ts>()), ...);
-                    for (currentRow = 0; currentRow < currentManager->size; currentRow++)
-                    {
-                        LambdaTraits::ArgInjectTemplateLambda(lambda, []<typename T>()
-                        {
-                            return &(currentComponentArray<T>[currentRow]);
-                        });
-                    }
-                    currentRow = InvalidIndex;
-                }
-            });
-        }
+            ArchetypeManager* currentManager = nullptr;
+            Index currentRow = InvalidIndex;
+            bool stop = false;
+        public:
+            /**
+             * @brief Stops the current iteration.
+             */
+            void StopIteration() { stop = true; };
 
-        /**
-         * @brief Get a reference to the currently processed entity.
-         * @return An EntityReference to the current entity, if available, or an empty one.
-         */
-        static EntityReference GetCurrentEntity()
-        {
-            return (currentRow != InvalidIndex) ?
-                EntityReference(EntityRecord::records[currentManager->recordIndices[currentRow]]) :
-                EntityReference();
-        }
+            /**
+             * @brief Get a reference to the current entity in the iteration.
+             * @return An EntityReference to the current entity, if available, or an empty one.
+             */
+            EntityReference GetCurrentEntity()
+            {
+                return (currentRow != InvalidIndex) ?
+                    EntityReference(EntityRecord::records[currentManager->recordIndices[currentRow]]) :
+                    EntityReference();
+            }
+
+            /**
+             * @brief Iterate over entities with specified component types and execute a lambda function.
+             * @tparam Lambda The lambda function to execute for each entity.
+             * @param lambda The lambda function to execute for each entity, providing access to entity components.
+             */
+            template <typename Lambda>
+            void Iterate(Lambda lambda)
+            {
+                using LambdaTraits = LambdaUtil<decltype(&Lambda::operator())>;
+                LambdaTraits::CallWithTypes([this, lambda]<typename ...Components>()
+                {
+                    using LookupCache = ArchetypeManager::LookupCache<Components...>;
+                    LookupCache::Update();
+                    for (size_t i = 0; !stop && i < LookupCache::matchCount; i++)
+                    {
+                        currentManager = &ArchetypeManager::managers[LookupCache::matchedIndices[i]];
+                        [this, lambda](Components* ...componentArray)
+                        {
+                            for (currentRow = 0; !stop && currentRow < currentManager->size; currentRow++)
+                            {
+                                lambda(&componentArray[currentRow] ...);
+                            }
+                        }(currentManager->template GetComponentArray<Components>() ...);
+                    }
+                });
+                currentRow = InvalidIndex;
+            }
+        };
     };
-}
+};

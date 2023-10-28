@@ -28,15 +28,16 @@ struct Velocity
     int x, y, z;
 };
 
+
 void main()
 {
     using namespace Hyperion::ECS;
 
     EntityReference entityA = World::CreateEntity<Position, Velocity>();
-
     EntityReference entityB = entityA;
 
     World::CreateEntity<Velocity, Position>();
+
     World::CreateEntity([](Position* p)
     {
         p->x = 1;
@@ -52,14 +53,57 @@ void main()
 
     entityB.Destroy();
 
+
+
+    struct ExampleSystem : World::EntityIterator
+    {
+        int classVariable = 2;
+        void CustomFunction()
+        {
+            Iterate([this](Position* p)
+            {
+                if (p->x < 7)
+                {
+                    classVariable += p->y;
+                    dbgio_printf("Yay from System!\n");
+                    dbgio_printf("Printing class variable: %d\n", classVariable);
+                    StopIteration();
+                }
+            });
+        }
+    };
+
     while (1)
     {
-        World::ForEachEntity([](Position* p)
+        World::EntityIterator ei;
+
+        ei.Iterate([](Position* p)
         {
             p->x += 2;
             p->y += 2;
-            dbgio_printf("Position x:%d y:%d\n", p->x, p->y);
         });
+
+        ei.Iterate([](Position* p, Velocity* v)
+        {
+            p->x += 2;
+            p->y += 2;
+            v->x = p->y;
+            dbgio_printf("Position x:%d y:%d\n", p->x, p->y);
+            dbgio_printf("Velocity x:%d y:%d z:%d\n", v->x, v->y, v->z);
+        });
+
+        ei.Iterate([&ei](Position* p)
+        {
+            if (p->x < 9)
+            {
+                dbgio_printf("Position x:%d y:%d\n", p->x, p->y);
+                dbgio_printf("Yay from Lambda!\n");
+                ei.StopIteration();
+            }
+        });
+
+        ExampleSystem ss;
+        ss.CustomFunction();
 
         dbgio_flush();
         vdp2_sync();
