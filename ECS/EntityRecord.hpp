@@ -44,13 +44,23 @@ namespace Hyperion::ECS
             {
                 size_t originalCapacity = capacity;
                 capacity = (capacity == 0) ? 2 : (capacity * 2) - (capacity / 2);
-                records = static_cast<EntityRecord*>(realloc(records, sizeof(EntityRecord) * capacity));
+
+                EntityRecord* newArray = new EntityRecord[capacity];
+                if (!newArray)
+                {
+                    /* TO-DO implement proper error handling*/
+                }
+
+                for (Index i = 0; i < originalCapacity; ++i)
+                {
+                    newArray[i] = std::move(records[i]);
+                }
+
+                delete[] records;
+
                 index = last++;
 
-                for (size_t i = originalCapacity; i < capacity; i++)
-                {
-                    new (&records[index]) EntityRecord();
-                }
+                records = newArray;
             }
             return records[index];
         }

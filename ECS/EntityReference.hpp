@@ -44,9 +44,9 @@ namespace Hyperion::ECS
                 {
                     ArchetypeManager& archetype = ArchetypeManager::managers[record.archetype];
                     using LambdaTraits = LambdaUtil<decltype(&Lambda::operator())>;
-                    LambdaTraits::ArgInjectTemplateLambda(lambda, [&archetype, &record]<typename T>()
+                    LambdaTraits::CallWithTypes([lambda, &archetype, &record]<typename ...Components>()
                     {
-                        return archetype.GetComponent<T>(record.row);
+                        lambda(archetype.GetComponent<Components>(record.row)...);
                     });
                     status = true;
                 }

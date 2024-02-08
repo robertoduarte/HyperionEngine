@@ -1,7 +1,7 @@
 #pragma once
 
 #include "EntityReference.hpp"
-#include "..\Utils\TemplateUtils.hpp"
+#include "..\Utils\std\utils.h"
 
 namespace Hyperion::ECS
 {
@@ -22,12 +22,9 @@ namespace Hyperion::ECS
             using LambdaTraits = LambdaUtil<decltype(&Lambda::operator())>;
             return LambdaTraits::CallWithTypes([&lambda]<typename ...Ts>()
             {
-                ArchetypeManager* const manager = ArchetypeManager::Helper<Ts...>::GetInstance();
-                const EntityRecord& record = manager->ReserveRecord();
-                LambdaTraits::ArgInjectTemplateLambda(lambda, [&manager, &record]<typename T>()
-                {
-                    return &(manager->template GetComponentArray<T>()[record.row]);
-                });
+                auto& manager = ArchetypeManager::Helper<Ts...>::GetInstance();
+                const EntityRecord& record = manager.ReserveRecord();
+                lambda(&manager.template GetComponentArray<Ts>()[record.row] ...);
                 return EntityReference(record);
             });
         }
@@ -40,10 +37,8 @@ namespace Hyperion::ECS
         template <typename... Ts>
         static EntityReference CreateEntity()
         {
-            ArchetypeManager* const manager = ArchetypeManager::Helper<Ts...>::GetInstance();
-            const EntityRecord& record = manager->ReserveRecord();
-            ((new (&manager->GetComponentArray<Ts>()[record.row]) Ts()), ...);
-            return EntityReference(record);
+            ArchetypeManager& manager = ArchetypeManager::Helper<Ts...>::GetInstance();
+            return EntityReference(manager.ReserveRecord());
         }
 
         /**
@@ -79,19 +74,24 @@ namespace Hyperion::ECS
             template <typename Lambda>
             void Iterate(Lambda lambda)
             {
+                stop = false;
                 using LambdaTraits = LambdaUtil<decltype(&Lambda::operator())>;
                 LambdaTraits::CallWithTypes([this, lambda]<typename ...Components>()
                 {
                     using LookupCache = ArchetypeManager::LookupCache<Components...>;
                     LookupCache::Update();
-                    for (size_t i = 0; !stop && i < LookupCache::matchCount; i++)
+
+                    for (size_t managerIndex : LookupCache::matchedIndices)
                     {
-                        currentManager = &ArchetypeManager::managers[LookupCache::matchedIndices[i]];
+                        if (stop) break;
+
+                        currentManager = &ArchetypeManager::managers[managerIndex];
+
                         [this, lambda](Components* ...componentArray)
                         {
                             for (currentRow = 0; !stop && currentRow < currentManager->size; currentRow++)
                             {
-                                lambda(&componentArray[currentRow] ...);
+                                lambda(componentArray++...);
                             }
                         }(currentManager->template GetComponentArray<Components>() ...);
                     }

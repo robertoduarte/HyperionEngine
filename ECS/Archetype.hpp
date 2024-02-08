@@ -4,19 +4,20 @@
 #include <stddef.h>
 
 #include "..\Utils\SatAlloc.hpp"
-#include "..\Utils\TemplateUtils.hpp"
+#include "..\Utils\std\vector.h"
 
 #include "EntityRecord.hpp"
+#include "Component.hpp"
 
 namespace Hyperion::ECS
 {
     /**
      * @brief A concept that defines the requirements for a valid component type.
-     * A component type must be trivial and non-empty.
+     * A component type must be non-empty.
      * @tparam T The component type.
      */
     template <typename T>
-    concept ComponentType = std::is_trivial_v<T> && (!std::is_empty_v<T>);
+    concept ComponentType = !std::is_empty_v<T>;
 
     /**
      * @brief Manages archetypes for entities in an ECS (Entity-Component-System).
@@ -26,39 +27,25 @@ namespace Hyperion::ECS
         friend class EntityReference;
         friend class World;
 
-        using BinaryType = size_t;
-
-        static inline constexpr size_t maxComponents = sizeof(BinaryType) * CHAR_BIT;
-        static inline size_t componentSizes[maxComponents] = { 0 };
+        static inline std::vector<ArchetypeManager> managers;
 
         /**
-         * @brief A binary identifier for a specific component type.
-         * @tparam T The component type.
+         * @brief Finds the index of the archetype manager associated with a specific component binary identifier.
+         * @param id The binary identifier of the components.
+         * @return The index of the archetype manager.
          */
-        template <ComponentType T>
-            requires(TypeInfo::ID<T> < maxComponents)
-        static inline const BinaryType ComponentBinaryID = []()
+        static size_t Find(Component::BinaryId id)
         {
-            componentSizes[TypeInfo::ID<T>] = sizeof(T);
-            return (BinaryType)1 << TypeInfo::ID<T>;
-        }();
+            size_t size = managers.size();
 
-        static inline ArchetypeManager* managers = nullptr;
-        static inline size_t managerCount = 0;
-
-        static size_t Find(BinaryType id)
-        {
-            for (size_t i = 0; i < managerCount; ++i)
+            for (size_t i = 0; i < size; ++i)
             {
-                if (managers[i].id == id)
-                {
-                    return i;
-                }
+                if (managers[i].id == id) { return i; }
             }
 
-            managers = static_cast<ArchetypeManager*>(realloc(managers, (managerCount + 1) * sizeof(ArchetypeManager)));
-            new (&managers[managerCount]) ArchetypeManager(id);
-            return managerCount++;
+            managers.push_back(std::move(ArchetypeManager(id)));
+
+            return size;
         }
 
         /**
@@ -68,16 +55,16 @@ namespace Hyperion::ECS
         template <typename... T>
         struct HelperImplementation
         {
-            static inline const BinaryType id = ((ComponentBinaryID<T>) | ...);
+            static inline Component::BinaryId id = (Component::IdBinary<T> | ...);
 
             /**
              * @brief Get the instance of the archetype manager.
              * @return The instance.
              */
-            static auto GetInstance()
+            static ArchetypeManager& GetInstance()
             {
                 static const size_t index = ArchetypeManager::Find(id);
-                return &ArchetypeManager::managers[index];
+                return ArchetypeManager::managers[index];
             }
 
             /**
@@ -85,7 +72,7 @@ namespace Hyperion::ECS
              * @param sourceID The binary identifier to add to.
              * @return The updated binary identifier.
              */
-            static BinaryType AddTo(BinaryType sourceID)
+            static Component::BinaryId AddTo(Component::BinaryId sourceID)
             {
                 return sourceID | id;
             }
@@ -95,7 +82,7 @@ namespace Hyperion::ECS
              * @param sourceID The binary identifier to remove from.
              * @return The updated binary identifier.
              */
-            static BinaryType RemoveFrom(BinaryType sourceID)
+            static Component::BinaryId RemoveFrom(Component::BinaryId sourceID)
             {
                 return sourceID & ~id;
             }
@@ -115,24 +102,27 @@ namespace Hyperion::ECS
         template <typename... T>
         struct LookupCacheImplementation
         {
-            static inline Index lastIndexChecked = 0;
-            static inline Index matchCount = 0;
-            static inline Index* matchedIndices = nullptr;
+            static inline size_t lastIndexChecked = 0;
+            static inline std::vector<uint16_t> matchedIndices;
 
             /**
              * @brief Update the cache.
              */
             static void Update()
             {
-                while (lastIndexChecked < ArchetypeManager::managerCount)
+                if (lastIndexChecked < ArchetypeManager::managers.size())
                 {
-                    if (ArchetypeManager::managers[lastIndexChecked].Contains(Helper<T...>::id))
+                    auto cacheIterator = ArchetypeManager::managers.begin() + lastIndexChecked;
+                    while (cacheIterator != ArchetypeManager::managers.end())
                     {
-                        matchedIndices = static_cast<Index*>(realloc(matchedIndices, (matchCount + 1) * sizeof(Index)));
-                        matchedIndices[matchCount] = lastIndexChecked;
-                        matchCount++;
+                        ArchetypeManager& manager = *cacheIterator;
+                        if (manager.Contains(Helper<T...>::id))
+                        {
+                            matchedIndices.push_back(lastIndexChecked);
+                        }
+                        ++cacheIterator;
+                        ++lastIndexChecked;
                     }
-                    lastIndexChecked++;
                 }
             }
         };
@@ -144,16 +134,16 @@ namespace Hyperion::ECS
         template <class... Ts>
         using LookupCache = instantiate_t<LookupCacheImplementation, sorted_list_t<list<Ts...>>>;
 
-        Index GetIndex() { return static_cast<Index>(this - managers); }
+        Index GetIndex() { return static_cast<Index>(this - &(*managers.begin())); }
 
-        BinaryType id;
+        Component::BinaryId id;
 
         using InternalIndex = uint8_t;
         static inline constexpr InternalIndex Unused = ~(InternalIndex(0));
 
         Index* recordIndices = nullptr;
         void** componentArrays = nullptr;
-        InternalIndex internalIndex[maxComponents] = { Unused };
+        InternalIndex internalIndex[Component::MaxComponentTypes] = { Unused };
         Index capacity = 0;
         Index size = 0;
 
@@ -163,15 +153,12 @@ namespace Hyperion::ECS
          * @param lambda The lambda function to apply to each component.
          */
         template <typename Lambda>
-        static void EachComponent(BinaryType id, Lambda lambda)
+        static void EachComponent(Component::BinaryId id, Lambda lambda)
         {
             size_t componentId = 0;
             do
             {
-                if (1 & id)
-                {
-                    lambda(componentId);
-                }
+                if (1 & id) { lambda(componentId); }
                 componentId++;
             } while (id >>= 1);
         }
@@ -183,15 +170,12 @@ namespace Hyperion::ECS
          * @param lambda The lambda function to apply to common components.
          */
         template <typename Lambda>
-        static void EachCommonComponent(BinaryType idA, BinaryType idB, Lambda lambda)
+        static void EachCommonComponent(Component::BinaryId idA, Component::BinaryId idB, Lambda lambda)
         {
             size_t componentId = 0;
             do
             {
-                if (1 & idA & idB)
-                {
-                    lambda(componentId);
-                }
+                if (1 & idA & idB) { lambda(componentId); }
                 componentId++;
             } while ((idA >>= 1) && (idB >>= 1));
         }
@@ -201,17 +185,7 @@ namespace Hyperion::ECS
          * @param expected The binary identifier of expected components.
          * @return true if the archetype contains the expected components, false otherwise.
          */
-        bool Contains(BinaryType expected) { return (id & expected) == expected; }
-
-        /**
-         * @brief Get a pointer to a component array.
-         * @param componentId The component identifier.
-         * @return A pointer to the component array.
-         */
-        char* GetComponentArray(size_t componentId) const
-        {
-            return static_cast<char*>(componentArrays[internalIndex[componentId]]);
-        }
+        bool Contains(Component::BinaryId expected) { return (id & expected) == expected; }
 
         /**
          * @brief Get a strongly-typed pointer to a component array.
@@ -221,7 +195,7 @@ namespace Hyperion::ECS
         template <typename T>
         T* GetComponentArray() const
         {
-            return static_cast<T*>(componentArrays[internalIndex[TypeInfo::ID<T>]]);
+            return static_cast<T*>(componentArrays[internalIndex[Component::Id<T>]]);
         }
 
         /**
@@ -238,22 +212,83 @@ namespace Hyperion::ECS
                 &((static_cast<T*>(componentArrays[index]))[row]);
         }
 
+    public:
+        /**
+         * @brief Default constructor.
+         */
+        ArchetypeManager() = default;
+
+        /**
+         * @brief Move constructor.
+         * @param other The other ArchetypeManager to move.
+         */
+        ArchetypeManager(ArchetypeManager&& other) noexcept
+            : id(std::move(other.id)),
+            recordIndices(std::move(other.recordIndices)),
+            componentArrays(std::move(other.componentArrays)),
+            capacity(std::move(other.capacity)),
+            size(std::move(other.size))
+        {
+            for (size_t i = 0; i < Component::MaxComponentTypes; ++i)
+            {
+                internalIndex[i] = std::move(other.internalIndex[i]);
+                other.internalIndex[i] = Unused;
+            }
+
+            // Reset the source object
+            other.id = 0;
+            other.recordIndices = nullptr;
+            other.componentArrays = nullptr;
+            other.capacity = 0;
+            other.size = 0;
+        }
+
+        /**
+         * @brief Move assignment operator.
+         * @param other The other ArchetypeManager to move.
+         * @return Reference to this ArchetypeManager after the move.
+         */
+        ArchetypeManager& operator=(ArchetypeManager&& other) noexcept
+        {
+            if (this != &other)
+            {
+                id = std::move(other.id);
+                recordIndices = std::move(other.recordIndices);
+                componentArrays = std::move(other.componentArrays);
+                capacity = std::move(other.capacity);
+                size = std::move(other.size);
+
+                for (size_t i = 0; i < Component::MaxComponentTypes; ++i)
+                {
+                    internalIndex[i] = std::move(other.internalIndex[i]);
+                    other.internalIndex[i] = Unused;
+                }
+
+                // Reset the source object
+                other.id = 0;
+                other.recordIndices = nullptr;
+                other.componentArrays = nullptr;
+                other.capacity = 0;
+                other.size = 0;
+            }
+
+            return *this;
+        }
+
+    private:
         /**
          * @brief Construct an ArchetypeManager with a given binary identifier.
          * @param newId The binary identifier.
          */
-        ArchetypeManager(BinaryType newId) : id(newId)
+        ArchetypeManager(Component::BinaryId newId) : id(newId)
         {
             uint8_t localComponentCount = 0;
             EachComponent(newId, [this, &localComponentCount](size_t componentId)
             {
                 internalIndex[componentId] = localComponentCount++;
             });
-            componentArrays = static_cast<void**>(malloc(sizeof(void*) * localComponentCount));
-            for (size_t i = 0; i < localComponentCount; i++)
-            {
-                componentArrays[i] = nullptr;
-            }
+
+            componentArrays = new void* [localComponentCount]();
         }
 
         /**
@@ -269,14 +304,11 @@ namespace Hyperion::ECS
                 capacity = (capacity == 0) ? 2 : (capacity * 2) - (capacity / 2);
                 recordIndices = static_cast<Index*>(realloc(recordIndices, sizeof(Index) * capacity));
 
-                EachComponent(id, [this](size_t componentId)
+                EachComponent(id, [this](const size_t& componentId)
                 {
-                    const uint8_t componentArrayIndex = internalIndex[componentId];
-                    componentArrays[componentArrayIndex] =
-                        realloc(componentArrays[componentArrayIndex], componentSizes[componentId] * capacity);
+                    Component::ResizeArray(componentId, &componentArrays[internalIndex[componentId]], capacity, size);
                 });
             }
-
             recordIndices[size] = entityRecord.GetIndex();
 
             entityRecord.archetype = static_cast<Index>(GetIndex());
@@ -297,13 +329,8 @@ namespace Hyperion::ECS
             {
                 EachComponent(id, [this, row, lastRow](size_t componentId)
                 {
-                    char* componentArray = static_cast<char*>(GetComponentArray(componentId));
-                    const size_t componentSize = componentSizes[componentId];
-                    memcpy(
-                        componentArray + (componentSize * row),
-                        componentArray + (componentSize * lastRow),
-                        componentSize
-                    );
+                    void* arrayPtr = componentArrays[internalIndex[componentId]];
+                    Component::MoveElement(componentId, arrayPtr, row, arrayPtr, lastRow);
                 });
 
                 EntityRecord::records[recordIndices[row]].Release();
@@ -323,12 +350,9 @@ namespace Hyperion::ECS
             EntityRecord& record = ReserveRecord();
             EachCommonComponent(id, sourceArchetype->id, [this, &record, sourceArchetype, sourceRow](size_t componentId)
             {
-                const size_t componentSize = componentSizes[componentId];
-                memcpy(
-                    GetComponentArray(componentId) + (componentSize * record.row),
-                    sourceArchetype->GetComponentArray(componentId) + (componentSize * sourceRow),
-                    componentSize
-                );
+                void* arrayPtr = componentArrays[internalIndex[componentId]];
+                void* srcArrayPtr = sourceArchetype->componentArrays[sourceArchetype->internalIndex[componentId]];
+                Component::MoveElement(componentId, arrayPtr, record.row, srcArrayPtr, sourceRow);
             });
             sourceArchetype->RemoveRow(sourceRow);
             return record;
