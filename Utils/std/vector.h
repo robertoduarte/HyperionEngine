@@ -9,17 +9,20 @@ extern "C" {
 
 namespace std
 {
+
+    template <typename T>
+    concept SupportedIndex = std::is_same_v<T, uint16_t> || std::is_same_v<T, size_t>;
+
     /**
      * @brief A simple vector implementation.
      * @tparam T The type of elements stored in the vector.
      */
-    template <typename T>
+    template <typename T, SupportedIndex Index = size_t>
     class vector
     {
-        
     private:
-        size_t capacity_; /**< The capacity of the vector. */
-        size_t size_;     /**< The size of the vector. */
+        Index capacity_; /**< The capacity of the vector. */
+        Index size_;     /**< The size of the vector. */
         T* data_;         /**< Pointer to the data array. */
 
     public:
@@ -35,7 +38,7 @@ namespace std
              * @brief Constructor for Iterator.
              * @param ptr Pointer to the element.
              */
-            Iterator(T* ptr) : ptr(ptr) {}
+            Iterator(T* ptr) : _ptr(ptr) {}
 
             /**
              * @brief Overloaded dereference operator.
@@ -43,7 +46,7 @@ namespace std
              */
             T& operator*() const
             {
-                return *ptr;
+                return *_ptr;
             }
 
             /**
@@ -52,7 +55,7 @@ namespace std
              */
             Iterator& operator++()
             {
-                ++ptr;
+                ++_ptr;
                 return *this;
             }
 
@@ -63,7 +66,90 @@ namespace std
              */
             bool operator!=(const Iterator& other) const
             {
-                return ptr != other.ptr;
+                return _ptr != other._ptr;
+            }
+
+            /**
+             * @brief Overloaded equality operator.
+             * @param other Another iterator for comparison.
+             * @return True if iterators are equal, false otherwise.
+             */
+            bool operator==(const Iterator& other) const
+            {
+                return _ptr == other._ptr;
+            }
+
+            /**
+             * @brief Overloaded less than operator.
+             * @param other Another iterator for comparison.
+             * @return True if this iterator is less than the other, false otherwise.
+             */
+            bool operator<(const Iterator& other) const
+            {
+                return _ptr < other._ptr;
+            }
+
+            /**
+             * @brief Overloaded greater than operator.
+             * @param other Another iterator for comparison.
+             * @return True if this iterator is greater than the other, false otherwise.
+             */
+            bool operator>(const Iterator& other) const
+            {
+                return _ptr > other._ptr;
+            }
+
+            /**
+             * @brief Overloaded less than or equal to operator.
+             * @param other Another iterator for comparison.
+             * @return True if this iterator is less than or equal to the other, false otherwise.
+             */
+            bool operator<=(const Iterator& other) const
+            {
+                return _ptr <= other._ptr;
+            }
+
+            /**
+             * @brief Overloaded greater than or equal to operator.
+             * @param other Another iterator for comparison.
+             * @return True if this iterator is greater than or equal to the other, false otherwise.
+             */
+            bool operator>=(const Iterator& other) const
+            {
+                return _ptr >= other._ptr;
+            }
+
+            /**
+             * @brief Overloaded addition assignment operator.
+             * @param n Number of positions to move forward.
+             * @return Iterator moved forward by n positions.
+             */
+            Iterator& operator+=(Index n)
+            {
+                _ptr += n;
+                return *this;
+            }
+
+            /**
+             * @brief Overloaded subtraction assignment operator.
+             * @param n Number of positions to move backward.
+             * @return Iterator moved back by n positions.
+             */
+            Iterator& operator-=(Index n)
+            {
+                _ptr -= n;
+                return *this;
+            }
+
+
+            /**
+             * @brief Overloaded addition operator.
+             * @param n Number of positions to move forward.
+             * @return Iterator moved forward by n positions.
+             */
+            Iterator operator+(Index n) const
+            {
+                return Iterator(_ptr + n);
             }
 
             /**
@@ -71,13 +157,13 @@ namespace std
              * @param n Number of positions to move backward.
              * @return Iterator moved back by n positions.
              */
-            Iterator operator-(size_t n) const
+            Iterator operator-(Index n) const
             {
-                return Iterator(ptr - n);
+                return Iterator(_ptr - n);
             }
 
         private:
-            T* ptr; /**< Pointer to the element. */
+            T* _ptr; /**< Pointer to the element. */
         };
 
         /**
@@ -100,7 +186,7 @@ namespace std
         vector(const vector& other) : capacity_(other.capacity_), size_(other.size_)
         {
             data_ = new T[capacity_];
-            for (size_t i = 0; i < size_; ++i)
+            for (Index i = 0; i < size_; ++i)
             {
                 data_[i] = other.data_[i];
             }
@@ -135,7 +221,7 @@ namespace std
         {
             if (size_ == capacity_)
             {
-                size_t new_capacity = (capacity_ == 0) ? 1 : capacity_ * 2;
+                Index new_capacity = (capacity_ == 0) ? 1 : capacity_ * 2;
                 if (!reserve(new_capacity))
                 {
                     return false;
@@ -155,7 +241,7 @@ namespace std
         {
             if (size_ == capacity_)
             {
-                size_t new_capacity = (capacity_ == 0) ? 1 : capacity_ * 2;
+                Index new_capacity = (capacity_ == 0) ? 1 : capacity_ * 2;
                 if (!reserve(new_capacity))
                 {
                     return false;
@@ -182,7 +268,7 @@ namespace std
          * @param index The index of the element to access.
          * @return Reference to the element at the specified index.
          */
-        T& operator[](size_t index)
+        T& operator[](Index index)
         {
             return data_[index];
         }
@@ -192,7 +278,7 @@ namespace std
          * @param new_capacity The new capacity to reserve.
          * @return True if successful, false otherwise.
          */
-        bool reserve(size_t new_capacity)
+        bool reserve(Index new_capacity)
         {
             if (new_capacity > capacity_)
             {
@@ -202,7 +288,7 @@ namespace std
                     return false;
                 }
 
-                for (size_t i = 0; i < size_; ++i)
+                for (Index i = 0; i < size_; ++i)
                 {
                     new_data[i] = std::move(data_[i]);
                 }
@@ -228,7 +314,7 @@ namespace std
                     return false;
                 }
 
-                for (size_t i = 0; i < size_; ++i)
+                for (Index i = 0; i < size_; ++i)
                 {
                     new_data[i] = std::move(data_[i]);  // Use move semantics here
                 }
@@ -244,13 +330,15 @@ namespace std
          * @brief Resizes the vector to contain a specified number of elements.
          * @param new_size The new size of the vector.
          */
-        void resize(size_t new_size)
+        bool resize(Index new_size)
         {
             if (new_size > capacity_)
             {
-                reserve(new_size);
+                if (!reserve(new_size))
+                    return false;
             }
             size_ = new_size;
+            return true;
         }
 
         /**
@@ -268,7 +356,7 @@ namespace std
          * @brief Removes an element at a specified index.
          * @param index The index of the element to remove.
          */
-        void erase(size_t index)
+        void erase(Index index)
         {
             erase(begin() + index);
         }
@@ -298,7 +386,7 @@ namespace std
          * @brief Returns the size of the vector.
          * @return The size of the vector.
          */
-        size_t size() const
+        Index size() const
         {
             return size_;
         }
@@ -316,7 +404,7 @@ namespace std
          * @brief Returns the current capacity of the vector.
          * @return The capacity of the vector.
          */
-        size_t capacity() const
+        Index capacity() const
         {
             return capacity_;
         }
