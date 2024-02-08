@@ -20,14 +20,13 @@ static inline const auto init = []()
 
 struct Position
 {
-    int x, y;
+    int x = 0, y = 0;
 };
 
 struct Velocity
 {
-    int x, y, z;
+    int x = 0, y = 0, z = 0;
 };
-
 
 void main()
 {
@@ -36,16 +35,11 @@ void main()
     EntityReference entityA = World::CreateEntity<Position, Velocity>();
     EntityReference entityB = entityA;
 
-    World::CreateEntity<Velocity, Position>();
-
-    World::CreateEntity([](Position* p)
+    World::CreateEntity([](Position* p, Velocity* v)
     {
         p->x = 1;
         p->y = 2;
-    });
 
-    World::CreateEntity([](Velocity* v)
-    {
         v->x = 1;
         v->y = 2;
         v->z = 3;
@@ -53,7 +47,8 @@ void main()
 
     entityB.Destroy();
 
-
+    World::CreateEntity<Velocity, Position>();
+    World::CreateEntity<Velocity, Position>();
 
     struct ExampleSystem : World::EntityIterator
     {
