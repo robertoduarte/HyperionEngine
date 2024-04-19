@@ -19,7 +19,7 @@ class FixedHierarchicalBitset
 private:
     static constexpr size_t wordSize = CHAR_BIT * sizeof(size_t);
     static constexpr size_t bitArraySize = (capacity + wordSize - 1) / wordSize;
-    size_t bitArray[bitArraySize] = {0};
+    size_t bitArray[bitArraySize] = { 0 };
 
     static constexpr size_t summarySize = (bitArraySize < 2) ? 0 : bitArraySize;
     FixedHierarchicalBitset<summarySize> summary;
@@ -51,7 +51,7 @@ private:
         }
     }
 
-    bool SummaryLookup(size_t &pos) { return false; }
+    bool SummaryLookup(size_t& pos) { return false; }
 
     bool SummaryGet(size_t pos) { return !hasSummary || summary.Get(pos); }
 
@@ -86,10 +86,10 @@ public:
     bool Get(size_t pos) const
     {
         return IsValid(pos) && SummaryGet(pos) &&
-               (bitArray[CalculateIndex(pos)] & CalculateBitMask(pos));
+            (bitArray[CalculateIndex(pos)] & CalculateBitMask(pos));
     }
 
-    bool LookupSetPos(size_t &pos) const
+    bool LookupSetPos(size_t& pos) const
     {
         size_t searchIndex = 0;
         if constexpr (hasSummary)
@@ -126,8 +126,8 @@ class HierarchicalBitset
 private:
     static constexpr size_t wordSize = CHAR_BIT * sizeof(size_t);
     size_t capacity = 0;
-    HierarchicalBitset *summary = nullptr;
-    size_t *bitArray = nullptr;
+    HierarchicalBitset* summary = nullptr;
+    size_t* bitArray = nullptr;
 
     static size_t CalculateIndex(size_t pos) { return pos / wordSize; }
     static size_t CalculateBitMask(size_t pos)
@@ -199,7 +199,7 @@ public:
 
         if (newBitArraySize != oldBitArraySize)
         {
-            size_t *newBitArray = static_cast<size_t *>(
+            size_t* newBitArray = static_cast<size_t*>(
                 realloc(bitArray, newBitArraySize * sizeof(size_t)));
             if (!newBitArray)
             {
@@ -260,10 +260,10 @@ public:
     bool Get(size_t pos) const
     {
         return IsValid(pos) && SummaryGet(pos) &&
-               (bitArray[CalculateIndex(pos)] & CalculateBitMask(pos));
+            (bitArray[CalculateIndex(pos)] & CalculateBitMask(pos));
     }
 
-    bool LookupSetPos(size_t &pos) const
+    bool LookupSetPos(size_t& pos) const
     {
         size_t searchIndex = 0;
         if (summary && !summary->LookupSetPos(searchIndex))
@@ -299,5 +299,124 @@ public:
         }
 
         return false;
+    }
+};
+
+
+
+
+
+template <typename T>
+struct Sparse8
+{
+    static constexpr size_t FlagMask = 0b10001000100010001000100010001000;
+    
+    size_t map = 0;
+    T* dense = nullptr;
+
+    size_t GetSize()
+    {
+        size_t size = 0;
+        size_t temp = map;
+        while (temp)
+        {
+            size += 0b1000 & temp;
+            temp >>= 4;
+        }
+        return size >> 3;
+    }
+
+    void SetIndex(size_t sparseIndex, size_t denseIndex)
+    {
+        denseIndex += 8;
+        size_t mask = 0b1111;
+        while (sparseIndex--)
+        {
+            denseIndex <<= 4;
+            mask <<= 4;
+        }
+        map = (map & ~mask) | (denseIndex & mask);
+    }
+
+    ~Sparse8()
+    {
+        delete[] dense;
+    }
+
+    bool Grow(size_t size)
+    {
+        if (0b1 & size)
+        {
+            T* newDense = new T[size + 1];
+
+            if (!newDense) return false;
+
+            for (size_t i = 0; i < size; ++i)
+            {
+                newDense[i] = std::move(dense[i]);
+            }
+
+            delete[] dense;
+            dense = newDense;
+        }
+
+        return true;
+    }
+
+    void Clear(size_t sparseIndex)
+    {
+        size_t last = 8;
+        size_t realPos = 8;
+
+        size_t temp = map;
+
+        for (size_t i = 0; i < 8; i++)
+        {
+            size_t current = temp & 0b1111;
+
+            if (current > last)
+            {
+                last = current;
+            }
+
+            if (i == sparseIndex)
+            {
+                realPos = current;
+            }
+
+            temp >>= 4;
+        }
+    }
+
+    T* Get(size_t sparsePos)
+    {
+        size_t densePosition = map;
+
+        while (sparsePos--) densePosition >>= 4;
+
+        return (0b1000 & densePosition) ? &dense[densePosition & 0b0111] : nullptr;
+    }
+
+    T* Set(size_t sparsePos)
+    {
+        size_t setBitChanger = 0b1000;
+        size_t densePosition = map;
+
+        while (sparsePos--)
+        {
+            setBitChanger <<= 4;
+            densePosition >>= 4;
+        }
+
+        size_t realPos = densePosition & 0b0111;
+        if (0b1000 & (~densePosition))
+        {
+            if (!Grow(realPos + 1)) return nullptr;
+
+            map ^= setBitChanger;
+            map += ((map & FlagMask) ^ FlagMask) >> 3;
+        }
+
+        return dense + realPos;
     }
 };

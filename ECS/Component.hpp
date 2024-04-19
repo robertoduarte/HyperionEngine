@@ -144,6 +144,7 @@ namespace Hyperion::ECS
             ResizeArrayInterface ResizeArray;       /**< Function pointer to resize an array. */
         };
 
+
         static inline std::vector<Operation> OperationList;    /**< Vector to hold operation function pointers. */
 
     public:
@@ -219,5 +220,113 @@ namespace Hyperion::ECS
             return OperationList[componentId].ResizeArray(ptrToArray, newSize, moveCount);
         }
 
+
+        struct Holder
+        {
+            using InternalIndex = uint8_t;
+            static inline constexpr InternalIndex Unused = ~(InternalIndex(0));
+            static inline constexpr InternalIndex MaxMapNumber = Unused;
+
+            void** componentArrays = nullptr;
+            InternalIndex internalIndex[MaxMapNumber] = { Unused };
+
+
+        };
+
+
+        struct Group
+        {
+            BinaryId id;
+            Index capacity = 0;
+            Index size = 0;
+
+            /**
+             * @brief Iterate over each component in a binary identifier.
+             * @param id The binary identifier.
+             * @param lambda The lambda function to apply to each component.
+             */
+            template <typename Lambda>
+            static void EachComponent(Component::BinaryId id, Lambda lambda)
+            {
+                size_t componentId = 0;
+                do
+                {
+                    if (1 & id) { lambda(componentId); }
+                    componentId++;
+                } while (id >>= 1);
+            }
+
+            /**
+             * @brief Iterate over common components in two binary identifiers.
+             * @param idA The first binary identifier.
+             * @param idB The second binary identifier.
+             * @param lambda The lambda function to apply to common components.
+             */
+            template <typename Lambda>
+            static void EachCommonComponent(BinaryId idA, BinaryId idB, Lambda lambda)
+            {
+                size_t componentId = 0;
+                do
+                {
+                    if (1 & idA & idB) { lambda(componentId); }
+                    componentId++;
+                } while ((idA >>= 1) && (idB >>= 1));
+            }
+
+            template <typename T>
+            T* GetComponent(Index row) const
+            {
+                auto index = internalIndex[Component::Id<T>];
+                return (index == Unused) ? nullptr :
+                    &((static_cast<T*>(componentArrays[index]))[row]);
+            }
+
+        };
     };
 }
+
+
+// size_t RShift(size_t val, size_t size)
+// {
+//     size_t ret;
+//     size_t shift = val >> 16;
+//     ret = -(size & 0xF);
+//     size_t s8 = val >> 8;
+//     s8 &= -(size & 0x8);
+//     size_t s4 = val >> 4;
+//     s4 &= -(size & 0x4);
+//     size_t s2 = val >> 2;
+//     s2 &= -(size & 0x2);
+//     size_t s1 = val >> 1;
+//     s1 &= -(size & 0x1);
+
+//     return  s16 + s8 + s4 + s2 + s1;
+// }
+
+// size_t RShift(size_t val, size_t size)
+// {
+//     // Precompute shift values
+//     size_t shift = val >> 16;
+//     size_t mask = -(size & -16);
+//     val = (val & mask) | (shift & ~mask);
+
+//     shift = val >> 8;
+//     mask = -(size & -8);
+//     val = (val & mask) | (shift & ~mask);
+
+//     shift = val >> 4;
+//     mask = -(size & -4);
+//     val = (val & mask) | (shift & ~mask);
+
+//     shift = val >> 2;
+//     mask = -(size & -2);
+//     val = (val & mask) | (shift & ~mask);
+
+//     shift = val >> 1;
+//     mask = -(size & -1);
+//     val = (val & mask) | (shift & ~mask);
+
+//     return val;
+// }
+
+// static inline constexpr size test = -(17 & 0xF);

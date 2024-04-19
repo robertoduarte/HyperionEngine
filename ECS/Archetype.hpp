@@ -207,7 +207,7 @@ namespace Hyperion::ECS
         template <typename T>
         T* GetComponent(Index row) const
         {
-            auto index = internalIndex[TypeInfo::ID<T>];
+            auto index = internalIndex[Component::Id<T>];
             return (index == Unused) ? nullptr :
                 &((static_cast<T*>(componentArrays[index]))[row]);
         }

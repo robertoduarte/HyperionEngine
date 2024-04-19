@@ -4,10 +4,15 @@ endif
 
 include $(YAUL_INSTALL_ROOT)/share/build.pre.mk
 
-SH_PROGRAM:= hyperion_engine_demo
-SH_SRCS:= main.cxx
+# Required for library usage
+include $(YAUL_INSTALL_ROOT)/share/build.mic3d.mk
 
-SH_CXXFLAGS+= -std=c++23 -I.
+SH_PROGRAM:= hyperion_engine_demo
+SH_SRCS:= main.cxx 
+# $(patsubst ./%,%,$(shell find src/meshes/ -name '*.c')) 
+
+SH_CXXFLAGS+= -std=c++23 -O3 -I.
+SH_LDFLAGS+= $(MIC3D_LDFLAGS)
 
 IP_VERSION:= V1.000
 IP_RELEASE_DATE:= 20160101

@@ -1,0 +1,115 @@
+
+#include  "..\Yaul\Yaul.hpp"
+#include "..\..\ECS\World.hpp"
+#include "Common.hpp"
+#include "MeshM.hpp"
+
+struct Position
+{
+    int x, y;
+};
+
+struct Velocity
+{
+    int x, y, z;
+};
+
+struct Angle
+{
+    Fxp angle = 0.0;
+};
+
+void main()
+{
+    using namespace Hyperion::ECS;
+
+    EntityReference entityA = World::CreateEntity<Position, Velocity>();
+
+    EntityReference entityB = entityA;
+
+    World::CreateEntity<Velocity, Position>();
+
+    EntityReference entityx = World::CreateEntity([](Position* p)
+    {
+        p->x = 1;
+        p->y = 2;
+    });
+
+    World::CreateEntity<Angle>();
+
+    entityx.Access([](Position* p)
+    {
+        dbgio_printf("EntityX Position x:%d y:%d\n", p->x, p->y);
+    });
+
+    World::CreateEntity([](Velocity* v)
+    {
+        v->x = 1;
+        v->y = 2;
+        v->z = 3;
+    });
+
+    entityB.Destroy();
+
+    struct ExampleSystem : World::EntityIterator
+    {
+        int classVariable = 2;
+        void CustomFunction()
+        {
+            Iterate([this](Position* p)
+            {
+                if (p->x < 7)
+                {
+                    classVariable += p->y;
+                    dbgio_printf("Yay from System!\n");
+                    dbgio_printf("Printing class variable: %d\n", classVariable);
+                    StopIteration();
+                }
+            });
+        }
+    };
+
+    while (1)
+    {
+        World::EntityIterator ei;
+
+        ei.Iterate([](Angle* a)
+        {
+            dbgio_printf("Cos of %f = %f\n", (a->angle).Value(), Trigonometry::Cos(a->angle).Value());
+
+            a->angle += 0.00002;
+        });
+
+        // ei.Iterate([](Position* p)
+        // {
+        //     p->x += 2;
+        //     p->y += 2;
+        // });
+
+        // ei.Iterate([](Position* p, Velocity* v)
+        // {
+        //     p->x += 2;
+        //     p->y += 2;
+        //     v->x = p->y;
+        //     dbgio_printf("Position x:%d y:%d\n", p->x, p->y);
+        //     dbgio_printf("Velocity x:%d y:%d z:%d\n", v->x, v->y, v->z);
+        // });
+
+        // ei.Iterate([&ei](Position* p)
+        // {
+        //     if (p->x < 9)
+        //     {
+        //         dbgio_printf("Position x:%d y:%d\n", p->x, p->y);
+        //         dbgio_printf("Yay from Lambda!\n");
+        //         ei.StopIteration();
+        //     }
+        // });
+
+        // ExampleSystem ss;
+        // ss.CustomFunction();
+
+        dbgio_flush();
+        vdp2_sync();
+        vdp2_sync_wait();
+    }
+}
